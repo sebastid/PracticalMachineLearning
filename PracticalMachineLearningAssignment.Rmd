@@ -1,0 +1,34 @@
+---
+title: "Practical Machine Learning Assignment"
+author: "Sébastien Durand"
+date: "8th February 2016"
+output: html_document
+---
+
+## Synopsis - Problem Description
+
+## Data Loading & Clean up 
+
+## Data Pre-Processing and Features Extraction
+
+## Models Training
+### Cross-Validation Setup
+
+### Random Forest Model Development
+
+### Naive Bayes Model
+
+### Latent Disciminant Model
+
+### glmnet Model Development
+
+## Model Evaluation On Test Data
+
+## Testing Error 
+
+## Model Refinement and Parameter tuning
+
+## Evaluation on validation set
+
+## Model Prediction for Quiz-4
+
