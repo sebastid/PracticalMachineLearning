@@ -6,6 +6,9 @@ output: html_document
 ---
 
 ## Synopsis
+__github repo__: https://github.com/sebastid/PracticalMachineLearning  
+__gh-pages link__: https://sebastid.github.io/PracticalMachineLearning/PracticalMachineLearningAssignment.html
+
 This the _Practical Machine Learning Assignment_ report that shows how to predict how well people  do a particular physical activity using machine learning.
 
 In this report, we will re-use data measured from accelerometers on the belt, forearm, arm, and dumbell of 6 young health  participants who were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).
@@ -21,7 +24,7 @@ The final prediction model will also be used  to predict 20 different test cases
 
 The data for this project assignment come from this source: [Weight Lifting Exercises Dataset](http://groupware.les.inf.puc-rio.br/har). The reader is encouraged to read the following paper for further details: [Wearable Computing: Accelerometers' Data Classification of Body Postures and Movements](http://groupware.les.inf.puc-rio.br/work.jsf?p1=10335)
 
-__NOTE__:  If you are viewing the Rmd file from the github master branch, you can also use it's online html version for convenience at: https://sebastid.github.io/PracticalMachineLearning/PracticalMachineLearningAssignment.html
+
 
 ## Data loading & clean up
 The training data for this project are available here:
