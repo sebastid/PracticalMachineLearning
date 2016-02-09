@@ -5,30 +5,249 @@ date: "8th February 2016"
 output: html_document
 ---
 
-## Synopsis - Problem Description
+## Synopsis
+This the _Practical Machine Learning Assignment_ report that shows how to predict how well people  do a particular physical activity using machine learning.
 
-## Data Loading & Clean up 
+In this report, we will re-use data measured from accelerometers on the belt, forearm, arm, and dumbell of 6 young health  participants who were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).
 
-## Data Pre-Processing and Features Extraction
+It will describe:
 
-## Models Training
+1. how the fitted model was built.
+2. how cross validation was used.
+3. what the expected out of sample error should.
+4. justifications for chosen decisions.
+
+The final prediction model will also be used  to predict 20 different test cases.
+
+The data for this project assignment come from this source: [Weight Lifting Exercises Dataset](http://groupware.les.inf.puc-rio.br/har). The reader is encouraged to read the following paper for further details: [Wearable Computing: Accelerometers' Data Classification of Body Postures and Movements](http://groupware.les.inf.puc-rio.br/work.jsf?p1=10335)
+
+
+
+## Data loading & clean up
+The training data for this project are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+Let's start by loading the training and final test datasets directly from the website:
+```{r echo=FALSE, message=FALSE, cache=TRUE}
+rm(list=ls(environment()))
+setwd("~/Documents/Coursera/DataScienceSpecialization/CourseProjectPortFolio/07-practical-ml/project/code/rawcode")
+```
+
+```{r echo=TRUE, message=FALSE, cache=TRUE}
+training_file_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+download.file(training_file_url, dest="pml-training.csv",method="curl")
+plm_training_df <- read.csv("./pml-training.csv") 
+
+training_file_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(training_file_url, dest="pml-testing.csv",method="curl")
+plm_testing_df <- read.csv("./pml-testing.csv")  
+
+dim(plm_training_df)
+dim(plm_testing_df)
+```
+
+The training dataset contains __`r nrow(plm_training_df)`__ rows and __`r ncol(plm_training_df)`__ variables including the output __'classe'__ variable to predict. The testing dataset only contains __`r nrow(plm_testing_df)`__ rows corresponding to the test input rows for the final  prediction to perform(project Quiz). Let's proceed with some exploratory analysis:
+```{r echo=TRUE, message=FALSE, cache=TRUE}
+str(plm_training_df)
+```
+
+The _str_ command output shows that the dataset is not very tidy and contains a lot of missing data and will require data cleaning. 
+Let's have a look at the classe distribution per user name and also per timestamp date:
+```{r echo=TRUE, message=FALSE, warning=FALSE, cache=TRUE, fig.width=12, fig.height=6}
+library(ggplot2); library(scales)
+g <- ggplot(plm_training_df,aes(x=classe,fill=user_name))+geom_bar(aes(y = (..count..)/sum(..count..)))+facet_wrap(~user_name)+scale_y_continuous(labels = percent)
+g <- g + theme_bw() + theme(legend.title = element_text(colour="black", size=15, face="bold"))
+g <- g + xlab("Fitted Model") + ylab("Accuracy") + ggtitle("")
+g
+g <- ggplot(data=plm_training_df,aes(x=cvtd_timestamp,y=classe,color=user_name))+geom_point()+coord_flip()
+g <- g + theme_bw() + theme(legend.title = element_text(colour="black", size=15, face="bold"))
+g <- g + xlab("CVTD Timestamp") + ylab("Classe") + ggtitle("")
+g
+```
+The plot above shows that the timestamp related variables are grouped together for each user. The first cleanup task is to ignore any timestamp variables but to keep the user name variable and create new co-variate variables from it (e.g. one hot encoding with _dummyVars_):
+```{r echo=TRUE, message=FALSE, warning=FALSE, cache=TRUE}
+library(caret)
+dummies <- dummyVars(~ user_name, data=plm_training_df)
+plm_training_df <- cbind(plm_training_df,predict(dummies,newdata=plm_training_df))
+plm_testing_df <- cbind(plm_testing_df,predict(dummies,newdata=plm_testing_df))
+```
+
+Let's remove some variables like index X, num_window, the original user_name variable and any timestamp related variables (the idea is to initially use sensor measurement variables assigned to each user; if the results are not satisfactory then we'll review this later on):
+```{r echo=TRUE, message=FALSE, warning=FALSE, cache=TRUE}
+labels_to_remove <- c("user_name","X","cvtd_timestamp",
+                      "raw_timestamp_part_1","raw_timestamp_part_2","num_window")
+plm_training_df <- plm_training_df[, -match(labels_to_remove, names(plm_training_df))]
+plm_testing_df <- plm_testing_df[,-match(labels_to_remove, names(plm_testing_df))]
+```
+
+Let's look at the extent of the missing data:
+```{r echo=TRUE, message=FALSE, warning=FALSE, cache=TRUE}
+train_has_na_vars <- names(plm_training_df)[apply(plm_training_df, 2, function(x) sum(is.na(x))>0)]
+test_has_na_vars <- names(plm_testing_df)[apply(plm_testing_df, 2, function(x) sum(is.na(x))>0)]
+has_na_vars <- union(train_has_na_vars,test_has_na_vars)
+```
+
+There are __`r length(has_na_vars)`__ variables containing missing data. The quantile command below shows that most these variable rows represents around 97.9% of missing data:
+```{r echo=TRUE, message=FALSE, warning=FALSE, cache=TRUE}
+quantile(colMeans(is.na(plm_training_df[,has_na_vars])))
+```
+
+Therefore, in order to reduce the training and testing feature space further, we'll ignore all variables containing missing values and remove them from the training and testing datasets:
+```{r echo=TRUE, message=FALSE, warning=FALSE, cache=TRUE}
+plm_training_df <- plm_training_df[,-match(has_na_vars,names(plm_training_df))]
+plm_testing_df <- plm_testing_df[,-match(has_na_vars,names(plm_testing_df))]
+cat(sprintf("Missing value Nb(training): %d, (Testing): %d\n",sum(is.na(plm_training_df)),sum(is.na(plm_testing_df))))
+```
+
+Lastly, we'll remove any _near zero variance_ variables with the _nearZeroVar_ command. 
+The tidied up dataset list of variables is shown below:
+```{r echo=TRUE, message=FALSE, warning=FALSE, cache=TRUE}
+nsv <- nearZeroVar(plm_training_df,saveMetrics=TRUE)
+nsv_vars <- names(plm_training_df)[nsv$nzv]
+plm_training_df <- plm_training_df[,-match(nsv_vars,names(plm_training_df))]
+plm_testing_df <- plm_testing_df[,-match(nsv_vars,names(plm_testing_df))]
+str(plm_training_df)
+```
+
+Most of the variables above are of integer and numeric types. We could take a last cleaning step to transform all integer types to numeric, but let's see how the prediction models cope with the training dataset as it is.
+
+Also, there are now __59__ variables including __classe__ (reduced from 160). We could add another pre-rocessing step using PCA to only select the principal components with the most variance in the dataset thus reducing the input feature space further. However we would loose some interpretability on the fitted model's learned parameters, e.g. if we wanted to get some insight on why a particular model works well.
+
+## Models training
+Six different models will be trained using a 5-folds cross validation approach. They will then be evaluated and compared against a validation (or _out-of-sample_) dataset:  
+
+1. Decision Classification Tree (rpart)
+2. k-Nearest Neighbor Classifier (knn)
+3. NaiveBayes classifier (nb)
+4. Random Forest model (rf)
+5. Linear Discriminant Analysis model(lda)
+6. Generalized Boosted Regression Model (gbm)
+
 ### Cross-Validation Setup
+We'll split the input training dataset into 60% for the models training and 40% for the models testing:
+```{r echo=TRUE, message=FALSE, warning=FALSE, cache=TRUE}
+library(caret)
+set.seed(1234)
+inTrain <- createDataPartition(y=plm_training_df$classe, p=0.6, list=FALSE)
+training <- plm_training_df[inTrain,]
+validation <- plm_training_df[-inTrain,]
 
-### Random Forest Model Development
+#CV setup
+folds=5; repeats=1
+fit_control <- trainControl(method = 'cv', number=folds, repeats=repeats, summaryFunction=defaultSummary, verboseIter = FALSE)
+PP <- c("center","scale")
 
-### Naive Bayes Model
+dim(training)
+dim(validation)
+```
 
-### Latent Disciminant Model
+### Model fitting
+The model fitting will be performed using the _caret::train_ command using the training control defined before.
+With the exception of the Tree and Random Forest models, all models will be trained with a standardization pre-processing step beforehand (.i.e. preProcess=PP).
 
-### glmnet Model Development
+```{r echo=TRUE, message=FALSE, warning=FALSE, cache=TRUE}
+tree_model <- train(classe ~ ., data=training,  method="rpart", trControl=fit_control)
+rf_model <- train(classe ~ ., data=training, method="rf", trControl=fit_control, ntree=10, importance=TRUE)
+knn_model <- train(classe ~ ., data=training, method="knn", trControl=fit_control, preProcess=PP)
+nb_model <- train(classe ~ ., data=training, method="nb", trControl=fit_control, preProcess=PP)
+lda_model <- train(classe ~ ., data=training, method="lda", trControl=fit_control, preProcess=PP)
+gbm_model <- train(classe ~ ., data=training, method="gbm", trControl=fit_control, preProcess=PP, verbose=FALSE)
+```
 
-## Model Evaluation On Test Data
+### Evaluation of the trained models against the validation dataset
+We'll use a function(__score_acc__) to score the accuracy of each fitted model against the validation dataset:
+```{r echo=TRUE, message=FALSE, warning=FALSE, cache=TRUE}
+score_acc <- function(pred,test)
+{
+  tbl <- table(pred,test)
+  sum(diag(tbl))/sum(tbl)
+}
 
-## Testing Error 
+all_models <- list(tree_model, knn_model, nb_model, rf_model, lda_model, gbm_model)
+names(all_models) <- sapply(all_models, function(x) x$method)
+training_accuracies <- sapply(all_models, function(x) x$accuracy)
+trn_acc <- sort(sapply(all_models, function(x) max(score_acc(predict(x,training),training$classe))))  
+test_acc <- sort(sapply(all_models, function(x) max(score_acc(predict(x,validation),validation$classe))))
+trn_acc
+test_acc
+```
 
-## Model Refinement and Parameter tuning
+```{r echo=TRUE, message=FALSE, warning=FALSE, cache=TRUE, fig.width=12, fig.height=4}
+models <- names(test_acc)
+acc_res_df <- data.frame(trn_acc=trn_acc[models],test_acc=test_acc[models],models)
+names(acc_res_df) <- c("Training Acc.", "Validation Acc.", "FittedModel")
+library(reshape2)
+acc_plt <- melt(acc_res_df, id.vars = c('FittedModel'))
+g <- ggplot(data=acc_plt,aes(x=factor(FittedModel,levels=names(test_acc))))
+g <- g + geom_bar(aes(y=value,fill=variable),position="dodge",stat="identity")+coord_flip()
+g <- g + xlab("Fitted Model") + ylab("Accuracy") +scale_y_continuous(labels = percent)
+g <- g + theme_bw() + theme(legend.title = element_text(colour="black", size=15, face="bold"))
+g <- g + scale_fill_discrete("") + ggtitle("Model Accuracy Comparison")
+g
+```
 
-## Evaluation on validation set
+The plot above shows that the most accurate model tested on the validation is the __Random Forest__ model, closely followed by the __GBM__ and __kNN__ models. The __NaiveBayes__ and __LDA__ models are not so accurate but still acceptable(could be used in an ensemble model). The least accurate model is the __rpart__ tree classification model.
 
-## Model Prediction for Quiz-4
+## Selection of the prediction model method for the quiz submission
+The most accurate model, e.g. the Random Forest model, will be used for the prediction of the 20 quiz questions. Its confusion matrix and stats are shown below:
+```{r echo=TRUE, message=FALSE, warning=FALSE, cache=TRUE}
+confusionMatrix(predict(rf_model,validation),validation$classe)
+```
+
+Its error evaluation on the out-of-sample / validation dataset is obtained using the _score_err_ function which normalizes the sum of the upper and lower triangle values of the above Confusion Matrix:
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, cache=TRUE}
+score_err <- function(pred,test)
+{
+  tbl <- table(pred,test)
+  (sum(tbl[upper.tri(tbl)])+sum(tbl[lower.tri(tbl)]))/sum(tbl)
+}
+
+oos_err <- score_err(predict(rf_model,validation),validation$classe)
+oos_err
+```
+The _out-of-sample error_ is __`r round(oos_err,4)*100`%__ on the validation set. 
+
+## Tuning of the prediction model
+Although the _out-of-sample error_ is very good (almost too good), this could be improved further by narrowing down the list of input variables. This is done by identifying those with the greatest influence on the outcome, we'll use the _varImpPlot_ command:
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, cache=TRUE, fig.width=12, fig.height=6}
+library(randomForest)
+varimp <- varImpPlot(rf_model$finalModel)
+imp_df<-data.frame(varimp)
+imp_names <-rownames(imp_df)[order(desc(imp_df$MeanDecreaseGini))]
+```
+
+In this report, we'll rely on the _'Mean Decrease in Accuracy'_ variable importance measure to identify the 20 most influencing variables:
+```{r echo=TRUE, message=FALSE, warning=FALSE, cache=TRUE}
+rf_formula <- reformulate(imp_names[1:20], response = "classe")
+rf_formula
+```
+
+Let's train  few more _Random Forest_ model with the 20 variables and different tree number values (10,100 and 500) and re-evaluate their accuracies and _out-of-sample_ errors on the validation set:
+```{r echo=TRUE, message=FALSE, warning=FALSE, cache=TRUE}
+rf10_model <- train(rf_formula, data=training, method="rf", trControl=fit_control, ntree=10, importance=TRUE)
+rf100_model <- train(rf_formula, data=training, method="rf", trControl=fit_control, ntree=100, importance=TRUE)
+rf500_model <- train(rf_formula, data=training, method="rf", trControl=fit_control, ntree=500, importance=TRUE)
+
+acc10 <- score_acc(predict(rf10_model,validation),validation$classe) 
+err10 <- score_err(predict(rf10_model,validation),validation$classe)
+acc100 <- score_acc(predict(rf100_model,validation),validation$classe) 
+err100 <- score_err(predict(rf100_model,validation),validation$classe)
+acc500 <- score_acc(predict(rf500_model,validation),validation$classe) 
+err500 <- score_err(predict(rf500_model,validation),validation$classe)
+data.frame(TreeNb=c(10,100,500),Accuracy=c(acc10,acc100,acc500),Error=c(err10,err100,err500))
+
+```
+
+## Conclusion and prediction for the course quiz submission
+In conclusion, we've trained many types of classifiers and chose a __Random Forest__ as being the most accurate. We then tuned the __Random Forest__ model with the 20 most influencing variables on accuracy and different values of tree numbers. The final __Random Forest__ model will use 500 trees achieving an _out-of-sample error_ of __`r round(err500,4)*100`%__.
+
+Here are its 20 predictions for the course final quiz submission:
+```{r echo=TRUE, message=FALSE, warning=FALSE, cache=TRUE}
+predict(rf500_model, plm_testing_df)
+```
 
