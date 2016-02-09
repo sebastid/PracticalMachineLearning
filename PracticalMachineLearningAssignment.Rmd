@@ -1,7 +1,7 @@
 ---
 title: "Practical Machine Learning Assignment"
 author: "Sébastien Durand"
-date: "8th February 2016"
+date: "9th February 2016"
 output: html_document
 ---
 
@@ -21,7 +21,7 @@ The final prediction model will also be used  to predict 20 different test cases
 
 The data for this project assignment come from this source: [Weight Lifting Exercises Dataset](http://groupware.les.inf.puc-rio.br/har). The reader is encouraged to read the following paper for further details: [Wearable Computing: Accelerometers' Data Classification of Body Postures and Movements](http://groupware.les.inf.puc-rio.br/work.jsf?p1=10335)
 
-
+__NOTE__:  If you are viewing the Rmd file from the github master branch, you can also use it's online html version for convenience at: https://sebastid.github.io/PracticalMachineLearning/PracticalMachineLearningAssignment.html
 
 ## Data loading & clean up
 The training data for this project are available here:
